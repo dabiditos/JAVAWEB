@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sky Jump</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1e1e1e;
+      color: white;
+    }
+
+    canvas {
+      display: none; /* Escondido até o jogo iniciar */
+      width: 100vw;
+      height: 100vh;
+      background-image: url('../imgs/background.png');
+      background-size: cover;
+    }
+
+    #startPanel,
+    #leaderboardPanel,
+    #confirmExit {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      gap: 20px;
+    }
+
+    #startPanel input {
+      padding: 10px;
+      border-radius: 5px;
+      border: none;
+      font-size: 1rem;
+      text-align: center;
+    }
+
+    button {
+      padding: 12px 25px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 8px;
+      background-color: #00aaff;
+      color: white;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #008ecc;
+    }
+
+    button:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Painel Inicial -->
+  <div id="startPanel">
+    <h1>Sky Jump</h1>
+    <input type="text" id="nickname" placeholder="Enter your nickname" maxlength="10" />
+    <button id="playBtn" onclick="startGame()">Play</button>
+    <button onclick="showLeaderboard()">Leaderboard</button>
+  </div>
+
+  <!-- Painel Leaderboard -->
+  <div id="leaderboardPanel" style="display:none">
+    <h2>Top 10 Scores</h2>
+    <ul id="leaderboard"></ul>
+    <button onclick="hideLeaderboard()">Back</button>
+  </div>
+
+  <!-- Confirmação de Saída -->
+  <div id="confirmExit" style="display:none">
+    <p>Do you want to return to the main menu?</p>
+    <button onclick="exitToMenu()">Yes</button>
+    <button onclick="resumeGame()">No</button>
+  </div>
+
+  <!-- Jogo -->
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    // === CONFIGURAÇÕES DO JOGO === //
+    const config = {
+      gravity: 0.4,
+      jumpVelocity: -10,
+      platformGapMin: 50,
+      platformGapMax: 100,
+      playerImage: '../imgs/player.png',
+      backgroundImage: '../imgs/background.png'
+    };
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    resizeCanvas();
+
+    let gameRunning = false;
+    let nickname = '';
+    let score = 0;
+    let maxHeight = 0;
+    let platforms = [];
+
+    // === JOGADOR === //
+    let player = {
+      x: 0,
+      y: 0,
+      vy: 0,
+      width: 40,
+      height: 40,
+      img: new Image()
+    };
+
+    player.img.onload = () => {
+      document.getElementById('playBtn').disabled = false;
+    };
+    player.img.src = config.playerImage;
+    document.getElementById('playBtn').disabled = true;
+
+    // === FUNÇÃO DE REDIMENSIONAMENTO === //
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    function startGame() {
+      nickname = document.getElementById('nickname').value.trim();
+      if (!nickname) return alert('Please enter a nickname.');
+
+      document.getElementById('startPanel').style.display = 'none';
+      canvas.style.display = 'block';
+      resetGame();
+      gameRunning = true;
+      requestAnimationFrame(gameLoop);
+    }
+
+    function resetGame() {
+      score = 0;
+      maxHeight = 0;
+      platforms = [];
+
+      for (let i = 0; i < 10; i++) {
+        platforms.push({
+          x: Math.random() * (canvas.width - 60),
+          y: canvas.height - i * 60,
+          width: 60,
+          height: 10
+        });
+      }
+
+      // Posiciona o jogador sobre a primeira plataforma
+      const firstPlatform = platforms[platforms.length - 1];
+      player.x = firstPlatform.x + firstPlatform.width / 2 - player.width / 2;
+      player.y = firstPlatform.y - player.height;
+      player.vy = 0;
+    }
+
+    function gameLoop() {
+      if (!gameRunning) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      player.vy += config.gravity;
+      player.y += player.vy;
+
+      if (-player.y > maxHeight) {
+        maxHeight = -player.y;
+        score = Math.floor(maxHeight);
+      }
+
+      for (let p of platforms) {
+        if (
+          player.vy > 0 &&
+          player.x + player.width > p.x &&
+          player.x < p.x + p.width &&
+          player.y + player.height > p.y &&
+          player.y + player.height < p.y + p.height + player.vy
+        ) {
+          player.vy = config.jumpVelocity;
+        }
+      }
+
+      if (player.y < canvas.height / 2) {
+        let delta = canvas.height / 2 - player.y;
+        player.y = canvas.height / 2;
+        platforms.forEach(p => p.y += delta);
+      }
+
+      ctx.drawImage(player.img, player.x, player.y, player.width, player.height);
+
+      ctx.fillStyle = '#00ff00';
+      platforms.forEach(p => ctx.fillRect(p.x, p.y, p.width, p.height));
+
+      for (let p of platforms) {
+        if (p.y > canvas.height) {
+          p.y = Math.random() * -100;
+          p.x = Math.random() * (canvas.width - 60);
+        }
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    function showLeaderboard() {
+      document.getElementById('leaderboardPanel').style.display = 'flex';
+      const list = document.getElementById('leaderboard');
+      list.innerHTML = '';
+      const scores = JSON.parse(localStorage.getItem('leaderboard') || '[]');
+      scores.sort((a, b) => b.score - a.score).slice(0, 10).forEach(entry => {
+        const li = document.createElement('li');
+        li.textContent = `${entry.name}: ${entry.score}`;
+        list.appendChild(li);
+      });
+    }
+
+    function hideLeaderboard() {
+      document.getElementById('leaderboardPanel').style.display = 'none';
+    }
+
+    function saveScore() {
+      let scores = JSON.parse(localStorage.getItem('leaderboard') || '[]');
+      scores.push({ name: nickname, score });
+      localStorage.setItem('leaderboard', JSON.stringify(scores));
+    }
+
+    function exitToMenu() {
+      saveScore();
+      gameRunning = false;
+      canvas.style.display = 'none';
+      document.getElementById('confirmExit').style.display = 'none';
+      document.getElementById('startPanel').style.display = 'flex';
+    }
+
+    function resumeGame() {
+      document.getElementById('confirmExit').style.display = 'none';
+      requestAnimationFrame(gameLoop);
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && gameRunning) {
+        gameRunning = false;
+        document.getElementById('confirmExit').style.display = 'flex';
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'a' && gameRunning) {
+        x-1;
+        document.getElementById('confirmExit').style.display = 'flex';
+      }
+    });
+  </script>
+</body>
+
+</html>
