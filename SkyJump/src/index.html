@@ -2,8 +2,10 @@
 <html lang="en">
 
 <head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sky Jump</title>
   <style>
     html, body {
@@ -27,7 +29,8 @@
 
     #startPanel,
     #leaderboardPanel,
-    #confirmExit {
+    #confirmExit,
+    #gameOverPanel {
       position: absolute;
       top: 0;
       left: 0;
@@ -40,6 +43,12 @@
       justify-content: center;
       z-index: 10;
       gap: 20px;
+    }
+
+    #leaderboardPanel,
+    #confirmExit,
+    #gameOverPanel {
+      display: none;
     }
 
     #startPanel input {
@@ -82,31 +91,52 @@
   </div>
 
   <!-- Painel Leaderboard -->
-  <div id="leaderboardPanel" style="display:none">
+  <div id="leaderboardPanel">
     <h2>Top 10 Scores</h2>
     <ul id="leaderboard"></ul>
     <button onclick="hideLeaderboard()">Back</button>
   </div>
 
   <!-- Confirmação de Saída -->
-  <div id="confirmExit" style="display:none">
+  <div id="confirmExit">
     <p>Do you want to return to the main menu?</p>
     <button onclick="exitToMenu()">Yes</button>
     <button onclick="resumeGame()">No</button>
+  </div>
+
+  <!-- Game Over -->
+  <div id="gameOverPanel">
+    <h2>Game Over</h2>
+    <p>Your score: <span id="finalScore">0</span></p>
+    <button onclick="exitToMenu()">Back to Menu</button>
   </div>
 
   <!-- Jogo -->
   <canvas id="gameCanvas"></canvas>
 
   <script>
-    // === CONFIGURAÇÕES DO JOGO === //
+
+    window.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=')) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    window.addEventListener('wheel', function (e) {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+
+    // DEFINICOES
     const config = {
       gravity: 0.4,
-      jumpVelocity: -10,
-      platformGapMin: 50,
-      platformGapMax: 100,
-      playerImage: '../imgs/player.png',
-      backgroundImage: '../imgs/background.png'
+      jumpVelocity: -20,
+      platformGap: 60,
+      platformWidth: 120,
+      platformHeight: 10,
+      playerImage: '../imgs/sapo.png'
     };
 
     const canvas = document.getElementById('gameCanvas');
@@ -114,18 +144,20 @@
     resizeCanvas();
 
     let gameRunning = false;
+    let paused = false;
     let nickname = '';
     let score = 0;
     let maxHeight = 0;
     let platforms = [];
+    let keys = {};
 
-    // === JOGADOR === //
     let player = {
       x: 0,
       y: 0,
       vy: 0,
       width: 40,
       height: 40,
+      speed: 6,
       img: new Image()
     };
 
@@ -135,7 +167,6 @@
     player.img.src = config.playerImage;
     document.getElementById('playBtn').disabled = true;
 
-    // === FUNÇÃO DE REDIMENSIONAMENTO === //
     function resizeCanvas() {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -148,8 +179,10 @@
 
       document.getElementById('startPanel').style.display = 'none';
       canvas.style.display = 'block';
+      document.getElementById('gameOverPanel').style.display = 'none';
       resetGame();
       gameRunning = true;
+      paused = false;
       requestAnimationFrame(gameLoop);
     }
 
@@ -158,19 +191,28 @@
       maxHeight = 0;
       platforms = [];
 
-      for (let i = 0; i < 10; i++) {
+      // Chão inicial castanho fixo no fundo
+      platforms.push({
+        x: 0,
+        y: canvas.height - config.platformHeight,
+        width: canvas.width,
+        height: config.platformHeight
+      });
+
+      // Plataformas acima, espaçadas por platformGap
+      for (let i = 1; i < 10; i++) {
         platforms.push({
-          x: Math.random() * (canvas.width - 60),
-          y: canvas.height - i * 60,
-          width: 60,
-          height: 10
+          x: Math.random() * (canvas.width - config.platformWidth),
+          y: canvas.height - config.platformHeight - i * config.platformGap,
+          width: config.platformWidth,
+          height: config.platformHeight
         });
       }
 
-      // Posiciona o jogador sobre a primeira plataforma
-      const firstPlatform = platforms[platforms.length - 1];
-      player.x = firstPlatform.x + firstPlatform.width / 2 - player.width / 2;
-      player.y = firstPlatform.y - player.height;
+      // Posiciona jogador em cima do chão inicial
+      let ground = platforms[0];
+      player.x = ground.x + ground.width / 2 - player.width / 2;
+      player.y = ground.y - player.height;
       player.vy = 0;
     }
 
@@ -179,45 +221,85 @@
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      player.vy += config.gravity;
-      player.y += player.vy;
+      if (!paused) {
+        // Movimento lateral
+        if (keys['a'] || keys['ArrowLeft']) {
+          player.x -= player.speed;
+          if (player.x < 0) player.x = 0;
+        }
+        if (keys['d'] || keys['ArrowRight']) {
+          player.x += player.speed;
+          if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+        }
 
-      if (-player.y > maxHeight) {
-        maxHeight = -player.y;
-        score = Math.floor(maxHeight);
-      }
+        player.vy += config.gravity;
+        player.y += player.vy;
 
-      for (let p of platforms) {
-        if (
-          player.vy > 0 &&
-          player.x + player.width > p.x &&
-          player.x < p.x + p.width &&
-          player.y + player.height > p.y &&
-          player.y + player.height < p.y + p.height + player.vy
-        ) {
-          player.vy = config.jumpVelocity;
+        // Pulo na plataforma
+        for (let p of platforms) {
+          if (
+            player.vy > 0 &&
+            player.x + player.width > p.x &&
+            player.x < p.x + p.width &&
+            player.y + player.height > p.y &&
+            player.y + player.height < p.y + p.height + player.vy
+          ) {
+            player.vy = config.jumpVelocity;
+          }
+        }
+
+        // Atualiza score baseado na altura
+        if (-player.y > maxHeight) {
+          maxHeight = -player.y;
+          score = Math.floor(maxHeight);
+        }
+
+        // Câmera mais alta (1/3.5 da altura)
+        const cameraY = canvas.height / 3.5;
+        if (player.y < cameraY) {
+          const delta = cameraY - player.y;
+          player.y = cameraY;
+          platforms.forEach(p => {
+            p.y += delta;
+          });
+        }
+
+        // Se sair da tela embaixo, game over
+        if (player.y > canvas.height) {
+          gameRunning = false;
+          paused = true;
+          document.getElementById('gameOverPanel').style.display = 'flex';
+          document.getElementById('finalScore').textContent = score;
+          saveScore();
+          return;
+        }
+
+        // Reposiciona plataformas que saem da tela para cima
+        for (let p of platforms) {
+          if (p.y > canvas.height) {
+            p.y = Math.random() * -100;
+            p.x = Math.random() * (canvas.width - config.platformWidth);
+            p.width = config.platformWidth;
+            p.height = config.platformHeight;
+          }
         }
       }
 
-      if (player.y < canvas.height / 2) {
-        let delta = canvas.height / 2 - player.y;
-        player.y = canvas.height / 2;
-        platforms.forEach(p => p.y += delta);
-      }
-
+      // Desenha jogador
       ctx.drawImage(player.img, player.x, player.y, player.width, player.height);
 
-      ctx.fillStyle = '#00ff00';
+      // Desenha plataformas verdes
+      ctx.fillStyle = '#0F0';
       platforms.forEach(p => ctx.fillRect(p.x, p.y, p.width, p.height));
 
-      for (let p of platforms) {
-        if (p.y > canvas.height) {
-          p.y = Math.random() * -100;
-          p.x = Math.random() * (canvas.width - 60);
-        }
-      }
+      // Desenha score no topo
+      ctx.fillStyle = 'white';
+      ctx.font = '24px Arial';
+      ctx.fillText(`Score: ${score}`, 20, 40);
 
-      requestAnimationFrame(gameLoop);
+      if (!paused) {
+        requestAnimationFrame(gameLoop);
+      }
     }
 
     function showLeaderboard() {
@@ -245,28 +327,30 @@
     function exitToMenu() {
       saveScore();
       gameRunning = false;
+      paused = false;
       canvas.style.display = 'none';
       document.getElementById('confirmExit').style.display = 'none';
+      document.getElementById('gameOverPanel').style.display = 'none';
       document.getElementById('startPanel').style.display = 'flex';
     }
 
     function resumeGame() {
       document.getElementById('confirmExit').style.display = 'none';
+      paused = false;
       requestAnimationFrame(gameLoop);
     }
 
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && gameRunning) {
-        gameRunning = false;
+      keys[e.key] = true;
+
+      if (e.key === 'Escape' && gameRunning && !paused) {
+        paused = true;
         document.getElementById('confirmExit').style.display = 'flex';
       }
     });
 
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'a' && gameRunning) {
-        x-1;
-        document.getElementById('confirmExit').style.display = 'flex';
-      }
+    window.addEventListener('keyup', (e) => {
+      keys[e.key] = false;
     });
   </script>
 </body>
