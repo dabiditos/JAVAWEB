@@ -1,11 +1,1 @@
-quando o jogo e despausado, o personagem nao se move
-jogo deve começar congelado e só deve começar quando 
-adicionar um chao inicial, png castanho, para simbolizar terra
-nuvens sem colisao, png branco
-plataformas laranja para fazer maior contraste com o céu
-ser possivel mexer com "A" e seta para a esquerda para mover para a esquerda, "D" e seta para a direita para mover para a direita
-distância vertical entre plataformas menor, não deixar que duas plataformas estejam muito perto de outras
-adicionar o score no canto superior esquerdo
-camara acompanha o personagem, camara nao pode ir para baixo
-se o jogador sai da camara totalmente, perde
-plataformas nao podem estar cortadas pela janela, por causa das bordas
+adicionar um caixa semi transparente para as letras serem lidas mais facilmente
